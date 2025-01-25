@@ -1,5 +1,6 @@
 package com.example.homedecorator.ui.component
 
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,7 +39,8 @@ import io.github.sceneview.rememberView
 fun ARSceneView(
     selectedFurniture: FurnitureItem?,
     modifier: Modifier = Modifier,
-    onError: (Exception) -> Unit = {}
+    onError: (Exception) -> Unit = {},
+    onFurniturePlaced: ((FurnitureItem) -> Unit)? = null
 ) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine = engine)
@@ -47,16 +49,12 @@ fun ARSceneView(
     val cameraNode = rememberARCameraNode(engine)
     val view = rememberView(engine = engine)
     val collisionSystem = rememberCollisionSystem(view)
-    var planeRenderer by remember {
-        mutableStateOf(true)
-    }
-    val modelInstances = remember {
-        mutableListOf<ModelInstance>()
-    }
-    var trackingFailureReason by remember {
-        mutableStateOf<TrackingFailureReason?>(null)
-    }
+
+    var planeRenderer by remember { mutableStateOf(true) }
+    val modelInstances = remember { mutableListOf<ModelInstance>() }
+    var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var frame by remember { mutableStateOf<Frame?>(null) }
+    var placedFurnitureCount by remember { mutableStateOf(0) }
 
     ARScene(
         modifier = modifier,
@@ -66,8 +64,7 @@ fun ARSceneView(
         view = view,
         collisionSystem = collisionSystem,
         planeRenderer = planeRenderer,
-        sessionConfiguration = {
-            session, config ->
+        sessionConfiguration = { session, config ->
             config.apply {
                 depthMode = when (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
                     true -> Config.DepthMode.AUTOMATIC
@@ -78,17 +75,15 @@ fun ARSceneView(
             }
         },
         cameraNode = cameraNode,
-        onTrackingFailureChanged = {
-            trackingFailureReason = it
-        },
+        onTrackingFailureChanged = { trackingFailureReason = it },
         onSessionUpdated = { session, updatedFrame ->
             frame = updatedFrame
 
-            if (childNodes.isEmpty()) {
+            if (childNodes.isEmpty() && selectedFurniture != null) {
                 updatedFrame.getUpdatedPlanes()
                     .firstOrNull { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }
                     ?.let { it.createAnchorOrNull(it.centerPose) }?.let { anchor ->
-                        childNodes += createAnchorNode(
+                        val anchorNode = createAnchorNode(
                             engine = engine,
                             modelLoader = modelLoader,
                             materialLoader = materialLoader,
@@ -96,33 +91,51 @@ fun ARSceneView(
                             anchor = anchor,
                             selectedFurniture = selectedFurniture
                         )
+                        childNodes += anchorNode
+                        placedFurnitureCount++
+                        onFurniturePlaced?.invoke(selectedFurniture)
                     }
             }
         },
         onGestureListener = rememberOnGestureListener(
             onSingleTapConfirmed = { motionEvent, node ->
-                if (node == null) {
+                if (selectedFurniture != null) {
+                    Log.i("Furniture selected", selectedFurniture.name)
+                } else {
+                    Log.i("Status", "None selected");
+                }
+                if (node == null && selectedFurniture != null) {
                     val hitResults = frame?.hitTest(motionEvent.x, motionEvent.y)
                     hitResults?.firstOrNull {
-                        it.isValid(
-                            depthPoint = false,
-                            point = false
+                        it.isValid(depthPoint = false, point = false)
+                    }?.createAnchorOrNull()?.let { anchor ->
+                        planeRenderer = false
+                        val anchorNode = createAnchorNode(
+                            engine = engine,
+                            modelLoader = modelLoader,
+                            materialLoader = materialLoader,
+                            modelInstances = modelInstances,
+                            anchor = anchor,
+                            selectedFurniture = selectedFurniture
                         )
-                    }?.createAnchorOrNull()
-                        ?.let { anchor ->
-                            planeRenderer = false
-                            childNodes += createAnchorNode(
-                                engine = engine,
-                                modelLoader = modelLoader,
-                                materialLoader = materialLoader,
-                                modelInstances = modelInstances,
-                                anchor = anchor,
-                                selectedFurniture = selectedFurniture
-                            )
-                        }
+                        childNodes += anchorNode
+                        placedFurnitureCount++
+                        onFurniturePlaced?.invoke(selectedFurniture)
+                    }
                 }
-            })
+            }
+        )
     )
+
+    trackingFailureReason?.let { reason ->
+        when (reason) {
+            TrackingFailureReason.BAD_STATE -> onError(Exception("Tracking in bad state"))
+            TrackingFailureReason.INSUFFICIENT_LIGHT -> onError(Exception("Insufficient light for tracking"))
+            TrackingFailureReason.EXCESSIVE_MOTION -> onError(Exception("Too much device motion"))
+            TrackingFailureReason.NONE -> {} // No error
+            else -> onError(Exception("Unknown tracking failure"))
+        }
+    }
 }
 
 fun createAnchorNode(
@@ -134,20 +147,23 @@ fun createAnchorNode(
     anchor: Anchor
 ): AnchorNode {
     val anchorNode = AnchorNode(engine = engine, anchor = anchor)
+    val modelInstance = if (modelInstances.isNotEmpty()) {
+        modelInstances.removeLast()
+    } else if (selectedFurniture != null) {
+        modelLoader.createModelInstance(rawResId = selectedFurniture.modelResId).also {
+            modelInstances.add(it)
+        }
+    } else {
+        throw IllegalStateException("No model instances available and no furniture selected.")
+    }
+
     val modelNode = ModelNode(
-        modelInstance = modelInstances.apply {
-            if (isEmpty()) {
-                if (selectedFurniture != null) {
-                    this += modelLoader.createModelInstance(rawResId = selectedFurniture.modelResId)
-                }
-            }
-        }.removeLast(),
-        // Scale to fit in a 0.5 meters cube
+        modelInstance = modelInstance,
         scaleToUnits = 0.5f
     ).apply {
-        // Model Node needs to be editable for independent rotation from the anchor rotation
         isEditable = true
     }
+
     val boundingBoxNode = CubeNode(
         engine,
         size = modelNode.extents,
