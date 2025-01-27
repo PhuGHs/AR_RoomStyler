@@ -57,13 +57,7 @@ android {
 }
 
 dependencies {
-
-//    implementation(defaultFileTree())
-
-    // Core
     implementation(libs.androidx.core.ktx)
-
-    // UI
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
@@ -71,51 +65,19 @@ dependencies {
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
-
-    // ViewModel
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-
-    // Navigation
     implementation(libs.androidx.navigation.compose)
-
-    // Material3
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material3.icons.extended)
-
-    // Coroutines
     implementation(libs.coroutines.core)
     implementation(libs.coroutines.android)
-
-    // Retrofit
-    implementation(libs.retrofit)
-    implementation(libs.retrofit.gson)
-    implementation(libs.okhttp3)
-    implementation(libs.okhttp3.logging.interceptor)
-
-    // Gson
     implementation(libs.gson)
-
-    // Room
-    implementation(libs.room.ktx)
-    implementation(libs.room.runtime)
-    implementation(libs.room.paging)
-//    ksp(libs.room.compiler)
-
-    // Paging
-    implementation(libs.paging.runtime)
-    implementation(libs.paging.compose)
-
-    // Timber
     implementation(libs.timber)
-
-    // Kotlin Reflect
     implementation(libs.kotlin.reflect)
-
-    // Shimmer
     implementation(libs.shimmer)
-
-    // Coil
     implementation(libs.coil)
+    // Lottie
+    implementation(libs.lottie)
 
     // ARSceneView
     implementation(libs.arsceneview)

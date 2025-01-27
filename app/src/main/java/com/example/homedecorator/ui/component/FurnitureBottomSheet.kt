@@ -16,12 +16,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.homedecorator.data.model.FurnitureItem
+import com.example.homedecorator.viewmodel.ArFurnitureViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FurnitureBottomSheet(
-    furnitureItems: List<FurnitureItem>,
-    onFurnitureSelected: (FurnitureItem) -> Unit,
+    viewModel: ArFurnitureViewModel,
     onDismiss: () -> Unit,
     sheetState: SheetState
 ) {
@@ -44,10 +44,11 @@ fun FurnitureBottomSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp)
             ) {
-                items(furnitureItems) { item ->
+                items(viewModel.data.value) { item ->
                     FurnitureCard(
                         item = item,
-                        onClick = { onFurnitureSelected(item) }
+                        onClick = { viewModel.selectFurniture(item) },
+                        isSelected = viewModel.isSelected(item.id)
                     )
                 }
             }

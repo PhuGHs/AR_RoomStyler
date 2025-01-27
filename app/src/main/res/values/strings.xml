@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">HomeDecorator</string>
+    <string name="message_move_gesture">Move model around the detected surface</string>
+    <string name="message_rotate_gesture">Rotate the model by using two fingers</string>
+    <string name="message_zoom_gesture">Zoom in or out on the model by using a pinch gesture</string>
+    <string name="message_scan_horizontal_plane">Scan horizontal plane</string>
 </resources>

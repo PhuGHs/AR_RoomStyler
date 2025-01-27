@@ -1,14 +1,23 @@
 package com.example.homedecorator.ui.component
 
 import android.util.Log
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import com.example.homedecorator.data.model.Dimensions
 import com.example.homedecorator.data.model.FurnitureItem
+import com.example.homedecorator.util.Constants
+import com.example.homedecorator.viewmodel.ArFurnitureViewModel
 import com.google.android.filament.Engine
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
@@ -34,13 +43,16 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberNodes
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberView
+import timber.log.Timber
 
 @Composable
 fun ARSceneView(
     selectedFurniture: FurnitureItem?,
+    viewModel: ArFurnitureViewModel,
     modifier: Modifier = Modifier,
     onError: (Exception) -> Unit = {},
-    onFurniturePlaced: ((FurnitureItem) -> Unit)? = null
+    onFurniturePlaced: ((FurnitureItem) -> Unit)? = null,
+    onInvalidPlane: (() -> Unit)? = null
 ) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine = engine)
@@ -55,6 +67,10 @@ fun ARSceneView(
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var frame by remember { mutableStateOf<Frame?>(null) }
     var placedFurnitureCount by remember { mutableStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        viewModel.updateDimension(modelLoader)
+    }
 
     ARScene(
         modifier = modifier,
@@ -79,52 +95,65 @@ fun ARSceneView(
         onSessionUpdated = { session, updatedFrame ->
             frame = updatedFrame
 
-            if (childNodes.isEmpty() && selectedFurniture != null) {
-                updatedFrame.getUpdatedPlanes()
-                    .firstOrNull { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }
-                    ?.let { it.createAnchorOrNull(it.centerPose) }?.let { anchor ->
-                        val anchorNode = createAnchorNode(
-                            engine = engine,
-                            modelLoader = modelLoader,
-                            materialLoader = materialLoader,
-                            modelInstances = modelInstances,
-                            anchor = anchor,
-                            selectedFurniture = selectedFurniture
-                        )
-                        childNodes += anchorNode
-                        placedFurnitureCount++
-                        onFurniturePlaced?.invoke(selectedFurniture)
+            updatedFrame.getUpdatedPlanes()
+                .firstOrNull { plane ->
+                    isPlaneAppropriateForFurniture(plane, selectedFurniture)
+                }?.let { plane ->
+                    if (selectedFurniture != null) {
+                        plane.createAnchorOrNull(plane.centerPose)?.let { anchor ->
+                            val anchorNode = createAnchorNode(
+                                engine = engine,
+                                modelLoader = modelLoader,
+                                materialLoader = materialLoader,
+                                modelInstances = modelInstances,
+                                anchor = anchor,
+                                selectedFurniture = selectedFurniture
+                            )
+                            childNodes += anchorNode
+                            placedFurnitureCount++
+                            onFurniturePlaced?.invoke(selectedFurniture)
+                        }
                     }
+                } ?: run {
+                Log.i("ARSceneView","No suitable plane found for furniture")
+                onInvalidPlane?.invoke()
             }
-        },
-        onGestureListener = rememberOnGestureListener(
-            onSingleTapConfirmed = { motionEvent, node ->
-                if (selectedFurniture != null) {
-                    Log.i("Furniture selected", selectedFurniture.name)
-                } else {
-                    Log.i("Status", "None selected");
-                }
-                if (node == null && selectedFurniture != null) {
-                    val hitResults = frame?.hitTest(motionEvent.x, motionEvent.y)
-                    hitResults?.firstOrNull {
-                        it.isValid(depthPoint = false, point = false)
-                    }?.createAnchorOrNull()?.let { anchor ->
-                        planeRenderer = false
-                        val anchorNode = createAnchorNode(
-                            engine = engine,
-                            modelLoader = modelLoader,
-                            materialLoader = materialLoader,
-                            modelInstances = modelInstances,
-                            anchor = anchor,
-                            selectedFurniture = selectedFurniture
-                        )
-                        childNodes += anchorNode
-                        placedFurnitureCount++
-                        onFurniturePlaced?.invoke(selectedFurniture)
-                    }
-                }
-            }
-        )
+        }
+//        ,
+//        onGestureListener = rememberOnGestureListener(
+//            onSingleTapConfirmed = { motionEvent, node ->
+//                if (selectedFurniture != null) {
+//                    if (node == null) {
+//                        val hitResults = frame?.hitTest(motionEvent.x, motionEvent.y)
+//                        hitResults?.firstOrNull { hit ->
+//                            hit.isValid(depthPoint = false, point = false) &&
+//                                    hit.trackable is Plane
+//                        }?.let { hit ->
+//                            val plane = hit.trackable as Plane
+//                            if (isPlaneAppropriateForFurniture(plane, selectedFurniture)) {
+//                                hit.createAnchorOrNull()?.let { anchor ->
+//                                    planeRenderer = false
+//                                    val anchorNode = createAnchorNode(
+//                                        engine = engine,
+//                                        modelLoader = modelLoader,
+//                                        materialLoader = materialLoader,
+//                                        modelInstances = modelInstances,
+//                                        anchor = anchor,
+//                                        selectedFurniture = selectedFurniture
+//                                    )
+//                                    childNodes += anchorNode
+//                                    placedFurnitureCount++
+//                                    onFurniturePlaced?.invoke(selectedFurniture)
+//                                }
+//                            } else {
+//                                    Log.i("ARSceneView","Tapped plane not suitable for furniture")
+//                                onInvalidPlane?.invoke()
+//                            }
+//                        }
+//                    }
+//                }
+//            }
+//        )
     )
 
     trackingFailureReason?.let { reason ->
@@ -159,7 +188,7 @@ fun createAnchorNode(
 
     val modelNode = ModelNode(
         modelInstance = modelInstance,
-        scaleToUnits = 0.5f
+        scaleToUnits = 1.0f
     ).apply {
         isEditable = true
     }
@@ -168,7 +197,7 @@ fun createAnchorNode(
         engine,
         size = modelNode.extents,
         center = modelNode.center,
-        materialInstance = materialLoader.createColorInstance(Color.White.copy(alpha = 0.5f))
+        materialInstance = materialLoader.createColorInstance(Color.White.copy(alpha = 1.0f))
     ).apply {
         isVisible = false
     }
@@ -181,4 +210,27 @@ fun createAnchorNode(
         }
     }
     return anchorNode
+}
+
+private fun isPlaneAppropriateForFurniture(plane: Plane, furniture: FurnitureItem?): Boolean {
+    if (furniture == null) return false
+
+    // Ensure plane is horizontal and facing upward
+    if (plane.type != Plane.Type.HORIZONTAL_UPWARD_FACING) return false
+
+    // Get furniture dimensions
+    val furnitureDimensions = furniture.dimensions ?: return false
+    val requiredWidth = furnitureDimensions.width
+    val requiredDepth = furnitureDimensions.depth
+
+    // Check if plane is large enough to accommodate furniture
+    val isWidthSufficient = plane.extentX * Constants.PLANE_SIZE_BUFFER_RATIO >= requiredWidth
+    val isDepthSufficient = plane.extentZ * Constants.PLANE_SIZE_BUFFER_RATIO >= requiredDepth
+
+    Log.i("ARSceneView", "Plane suitability check - " +
+            "Furniture: ${furniture.name}, " +
+            "Required Width: $requiredWidth (Plane: ${plane.extentX * Constants.PLANE_SIZE_BUFFER_RATIO}), " +
+            "Required Depth: $requiredDepth (Plane: ${plane.extentZ * Constants.PLANE_SIZE_BUFFER_RATIO}), " +
+            "Suitable: ${isWidthSufficient && isDepthSufficient}")
+    return isWidthSufficient && isDepthSufficient
 }
