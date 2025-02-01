@@ -9,22 +9,27 @@ import io.github.sceneview.node.ModelNode
 class ModelDimensionsCalculator(
     private val modelLoader: ModelLoader
 ) {
-    fun calculateDimensions(modelResId: Int, desiredScale: Float = 1.0f): Dimensions {
-        val modelInstance = modelLoader.createModelInstance(rawResId = modelResId);
+    fun calculateDimensions(modelResId: Int): Dimensions {
+        val modelInstance = modelLoader.createModelInstance(rawResId = modelResId)
         val modelNode = ModelNode(
             modelInstance = modelInstance,
-            scaleToUnits = desiredScale
+            scaleToUnits = 1.0f // Use a scale of 1.0f to get raw dimensions
         )
 
-        val rawExtents = modelNode.extents;
+        // Get the raw extents of the model
+        val rawExtents = modelNode.extents
+
+        // Assuming the model's extents are in meters, use them directly
+        // If the model's extents are not in meters, apply a conversion factor here
         val dimensions = Dimensions(
-            width = (rawExtents.x * desiredScale),
-            height = (rawExtents.y * desiredScale),
-            depth = (rawExtents.z * desiredScale)
+            width = rawExtents.x,
+            height = rawExtents.y,
+            depth = rawExtents.z
         )
 
-        modelNode.destroy();
+        // Clean up the model node
+        modelNode.destroy()
 
-        return dimensions;
+        return dimensions
     }
 }

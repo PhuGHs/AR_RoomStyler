@@ -88,9 +88,9 @@ fun ARFurnitureScreen(
         )
         
         if (!noFurnitureItemSelected) {
-            Text(text = "No furniture", modifier = Modifier.align(Alignment.Center))
-        } else {
             Text(text = "Already have", modifier = Modifier.align(Alignment.Center))
+        } else {
+            Text(text = "No furniture", modifier = Modifier.align(Alignment.Center))
         }
 
         Button(

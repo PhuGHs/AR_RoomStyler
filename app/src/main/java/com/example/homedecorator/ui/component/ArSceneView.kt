@@ -23,7 +23,9 @@ import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Plane
+import com.google.ar.core.Pose
 import com.google.ar.core.TrackingFailureReason
+import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARScene
 import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.ar.arcore.getUpdatedPlanes
@@ -33,6 +35,7 @@ import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.math.Scale
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.ModelNode
@@ -52,7 +55,8 @@ fun ARSceneView(
     modifier: Modifier = Modifier,
     onError: (Exception) -> Unit = {},
     onFurniturePlaced: ((FurnitureItem) -> Unit)? = null,
-    onInvalidPlane: (() -> Unit)? = null
+    onInvalidPlane: (() -> Unit)? = null,
+    onModelTooLarge: (() -> Unit)? = null
 ) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine = engine)
@@ -97,7 +101,7 @@ fun ARSceneView(
 
             updatedFrame.getUpdatedPlanes()
                 .firstOrNull { plane ->
-                    isPlaneAppropriateForFurniture(plane, selectedFurniture)
+                    isPlaneAppropriateForFurniture(plane, selectedFurniture, plane.centerPose)
                 }?.let { plane ->
                     if (selectedFurniture != null) {
                         plane.createAnchorOrNull(plane.centerPose)?.let { anchor ->
@@ -188,11 +192,35 @@ fun createAnchorNode(
 
     val modelNode = ModelNode(
         modelInstance = modelInstance,
-        scaleToUnits = 1.0f
+        scaleToUnits = 1.0f // Start with a scale of 1.0f
     ).apply {
         isEditable = true
     }
 
+    // Get the pre-calculated dimensions of the model (in meters)
+    val modelDimensions = selectedFurniture?.dimensions ?: Dimensions(1.0f, 1.0f, 1.0f)
+
+    // Get the plane dimensions from the anchor
+    val planeDimensions = if (anchor.trackingState == TrackingState.TRACKING) {
+        val trackable = anchor.pose
+        if (trackable is Plane) {
+            Dimensions(trackable.extentX, 1.0f, trackable.extentZ)
+        } else {
+            null
+        }
+    } else {
+        null
+    } ?: Dimensions(1.0f, 1.0f, 1.0f)
+
+    // Calculate the scale required to fit the model within the plane
+    val scaleX = planeDimensions.width / modelDimensions.width
+    val scaleZ = planeDimensions.depth / modelDimensions.depth
+    val scale = minOf(scaleX, scaleZ, 1.0f) // Ensure the model fits within the plane
+
+    // Apply the calculated scale to the model
+    modelNode.scale = Scale(scale, scale, scale)
+
+    // Add a bounding box for debugging (optional)
     val boundingBoxNode = CubeNode(
         engine,
         size = modelNode.extents,
@@ -204,26 +232,47 @@ fun createAnchorNode(
     modelNode.addChildNode(boundingBoxNode)
     anchorNode.addChildNode(modelNode)
 
+    // Enable editing (optional)
     listOf(modelNode, anchorNode).forEach {
         it.onEditingChanged = { editingTransforms ->
             boundingBoxNode.isVisible = editingTransforms.isNotEmpty()
         }
     }
+
     return anchorNode
 }
 
-private fun isPlaneAppropriateForFurniture(plane: Plane, furniture: FurnitureItem?): Boolean {
+private fun isPlaneAppropriateForFurniture(
+    plane: Plane,
+    furniture: FurnitureItem?,
+    anchorPose: Pose? = null
+): Boolean {
     if (furniture == null) return false
 
     // Ensure plane is horizontal and facing upward
     if (plane.type != Plane.Type.HORIZONTAL_UPWARD_FACING) return false
 
-    // Get furniture dimensions
+    // Optional: Check if the anchor's pose is within the plane's polygon
+    if (anchorPose != null && !plane.isPoseInPolygon(anchorPose)) {
+        Log.i("ARSceneView", "Anchor's pose is not within the plane's polygon")
+        return false
+    }
+
+    // Get furniture dimensions (in meters)
     val furnitureDimensions = furniture.dimensions ?: return false
     val requiredWidth = furnitureDimensions.width
     val requiredDepth = furnitureDimensions.depth
 
-    // Check if plane is large enough to accommodate furniture
+    // Check if the model is larger than the plane
+    val isModelLargerThanPlane = requiredWidth > plane.extentX || requiredDepth > plane.extentZ
+    if (isModelLargerThanPlane) {
+        Log.i("ARSceneView", "Model is too large for the plane - " +
+                "Required Width: $requiredWidth (Plane: ${plane.extentX}), " +
+                "Required Depth: $requiredDepth (Plane: ${plane.extentZ})")
+        return false
+    }
+
+    // Check if plane is large enough to accommodate furniture (with buffer)
     val isWidthSufficient = plane.extentX * Constants.PLANE_SIZE_BUFFER_RATIO >= requiredWidth
     val isDepthSufficient = plane.extentZ * Constants.PLANE_SIZE_BUFFER_RATIO >= requiredDepth
 
