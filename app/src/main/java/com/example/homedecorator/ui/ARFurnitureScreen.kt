@@ -48,14 +48,6 @@ fun ARFurnitureScreen(
         derivedStateOf { Objects.isNull(viewModel.selectedFurniture) }
     }
 
-    val showGestureOverlay by remember {
-        mutableStateOf(false)
-    }
-
-    val showCoachingOverlay by remember {
-        mutableStateOf(true)
-    }
-
 
 
     Box(modifier = Modifier.fillMaxSize()) {

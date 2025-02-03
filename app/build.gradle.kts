@@ -82,6 +82,7 @@ dependencies {
     // ARSceneView
     implementation(libs.arsceneview)
     implementation(libs.core)
+    implementation(libs.joml)
 
     // Testing
     testImplementation(libs.junit)

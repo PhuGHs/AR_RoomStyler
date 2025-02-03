@@ -33,9 +33,7 @@ internal fun GestureOverlay(
     onComplete: () -> Unit
 ) {
     val specs = listOf(
-        R.raw.move_gesture_animation,
-        R.raw.rotate_gesture_animation,
-        R.raw.zoom_gesture_animation
+        R.raw.move_gesture_animation
     ).map(LottieCompositionSpec::RawRes)
 
     val messages = listOf(

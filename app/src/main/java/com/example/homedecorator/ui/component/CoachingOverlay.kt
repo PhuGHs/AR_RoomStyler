@@ -10,6 +10,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
@@ -35,6 +37,8 @@ internal fun CoachingOverlay(
     ) {
         Text(
             text = message,
+            textAlign = TextAlign.Center,
+            color = Color.White,
             style = MaterialTheme.typography.titleLarge
         )
 

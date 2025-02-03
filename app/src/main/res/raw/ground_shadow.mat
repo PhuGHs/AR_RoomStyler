@@ -1,0 +1,15 @@
+material {
+    name : "GroundShadow",
+    shadingModel : "unlit",
+    blending : "transparent",
+    depthWrite : false,  // Important for transparency
+    doubleSided : true
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        material.baseColor = vec4(0.0, 0.0, 0.0, 0.5); // Semi-transparent black
+        material.alpha = 0.5; // Ensure transparency works
+    }
+}
