@@ -1,10 +1,9 @@
 package com.example.homedecorator.viewmodel
 
-import androidx.compose.runtime.State
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.homedecorator.data.model.Dimensions
 import com.example.homedecorator.data.model.FurnitureItem
 import com.example.homedecorator.data.repo.FurnitureRepository
 import com.example.homedecorator.util.ModelDimensionsCalculator
@@ -26,7 +25,9 @@ class ArFurnitureViewModel(
     val placedFurnitureList: StateFlow<List<FurnitureItem>> = _placedFurnitureList;
     val data: StateFlow<List<FurnitureItem>> = _furnitureItems;
 
-    fun updateDimension(modelLoader: ModelLoader) {
+    private var currentModelIndex = 0
+
+    fun updateDimension(modelLoader: ModelLoader): List<FurnitureItem> {
         viewModelScope.launch {
             val calculator = ModelDimensionsCalculator(modelLoader)
             val itemsWithDimensions = repository.getFurnitureItems().map { item ->
@@ -35,14 +36,40 @@ class ArFurnitureViewModel(
                 )
             }
             _furnitureItems.emit(itemsWithDimensions)
-            // Set initial selected furniture after dimensions are calculated
             _selectedFurniture.emit(itemsWithDimensions.firstOrNull())
+        }
+        return _furnitureItems.value
+    }
+
+    fun navigateToNextModel() {
+        viewModelScope.launch {
+            val modelsList = _furnitureItems.value
+            if (modelsList.isNotEmpty()) {
+                currentModelIndex = (currentModelIndex + 1) % modelsList.size
+                _selectedFurniture.emit(modelsList[currentModelIndex])
+            }
+        }
+    }
+
+    fun navigateToPreviousModel() {
+        viewModelScope.launch {
+            val modelsList = _furnitureItems.value
+            if (modelsList.isNotEmpty()) {
+                currentModelIndex = if (currentModelIndex > 0) {
+                    currentModelIndex - 1
+                } else {
+                    modelsList.size - 1
+                }
+                _selectedFurniture.emit(modelsList[currentModelIndex])
+            }
         }
     }
 
     fun selectFurniture(item: FurnitureItem) {
         viewModelScope.launch {
             _selectedFurniture.emit(item)
+            // Update currentModelIndex to match the selected item
+            currentModelIndex = _furnitureItems.value.indexOf(item).coerceAtLeast(0)
         }
     }
 

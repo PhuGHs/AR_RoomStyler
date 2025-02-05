@@ -1,6 +1,6 @@
 package com.example.homedecorator.ui.component
 
-import android.content.Context
+
 import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -18,54 +18,36 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import com.example.homedecorator.R
 import com.example.homedecorator.data.model.Dimensions
 import com.example.homedecorator.data.model.FurnitureItem
-import com.example.homedecorator.data.model.PlacementCriteria
 import com.example.homedecorator.util.Constants
 import com.example.homedecorator.util.enableGestures
 import com.example.homedecorator.util.endBouncingEffect
 import com.example.homedecorator.util.startBouncingEffect
 import com.example.homedecorator.viewmodel.ArFurnitureViewModel
-import com.google.android.filament.Box
 import com.google.android.filament.Engine
-import com.google.android.filament.Material
 import com.google.ar.core.Anchor
-import com.google.ar.core.CameraConfig
-import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Plane
 import com.google.ar.core.Pose
-import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
-import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARScene
 import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.ar.arcore.getUpdatedPlanes
-import io.github.sceneview.ar.arcore.isValid
 import io.github.sceneview.ar.arcore.position
-import io.github.sceneview.ar.arcore.rotation
 import io.github.sceneview.ar.getDescription
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.rememberARCameraNode
-import io.github.sceneview.ar.rememberARCameraStream
-import io.github.sceneview.collision.Matrix
-import io.github.sceneview.collision.Quaternion
-import io.github.sceneview.collision.Vector3
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
-import io.github.sceneview.math.Scale
+import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
-import io.github.sceneview.math.times
-import io.github.sceneview.math.toFloat3
-import io.github.sceneview.math.toMatrix
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.CubeNode
-import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.ModelNode
-import io.github.sceneview.node.PlaneNode
+import io.github.sceneview.node.Node
 import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -73,18 +55,9 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberNodes
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberView
-import io.github.sceneview.utils.getResourceUri
-import org.joml.Matrix4f
-import org.joml.Quaternionf
-import org.joml.Vector3f
-import org.joml.Vector4f
-import timber.log.Timber
-import java.util.EnumSet
-import java.util.concurrent.ConcurrentHashMap
-import kotlin.math.sign
 
 @Composable
-fun ARSceneView(
+internal fun ARSceneView(
     selectedFurniture: FurnitureItem?,
     viewModel: ArFurnitureViewModel,
     modifier: Modifier = Modifier,
@@ -102,7 +75,6 @@ fun ARSceneView(
     val collisionSystem = rememberCollisionSystem(view)
 
     val modelInstanceCache = remember { mutableMapOf<Int, ModelInstance>() }
-    val polygonVerticesMap = remember { ConcurrentHashMap<Plane, List<Point>>() }
 
     var planeRenderer by remember { mutableStateOf(true) }
     val modelInstances = remember { mutableListOf<ModelInstance>() }
@@ -112,10 +84,14 @@ fun ARSceneView(
     var model by remember { mutableStateOf<ModelNode?>(null) }
     var animateModel by remember { mutableStateOf(false) }
     var showCoachingOverlay by remember { mutableStateOf(true) }
-    var isModelAnchored by remember { mutableStateOf(false) }
-    var temporaryPosition by remember { mutableStateOf<Pose?>(null) }
+    val furnitureDimensions = remember {
+        mutableMapOf<Int, Dimensions>()
+    }
+    var furnitureDimensionsLoaded by remember { mutableStateOf(false) }
+    var selectedNode: Node? by remember { mutableStateOf(null) }
+    var isMoving by remember { mutableStateOf(false) }
+    var isSelected by remember { mutableStateOf(false) }
 
-    // Performance optimization: Cache model instances
     fun getOrCreateModelInstance(modelResId: Int): ModelInstance {
         return modelInstanceCache.getOrPut(modelResId) {
             modelLoader.createModelInstance(rawResId = modelResId)
@@ -123,11 +99,16 @@ fun ARSceneView(
     }
 
     LaunchedEffect(Unit) {
-        view.setShadowingEnabled(true)
+        val items = viewModel.updateDimension(modelLoader)
+
+        items.forEachIndexed { _, furnitureItem ->
+            furnitureItem.dimensions?.let { furnitureDimensions[furnitureItem.id] = it }
+        }
+        furnitureDimensionsLoaded = true
     }
 
     LaunchedEffect(Unit) {
-        viewModel.updateDimension(modelLoader)
+        view.setShadowingEnabled(true)
     }
 
     LaunchedEffect(key1 = animateModel) {
@@ -138,7 +119,7 @@ fun ARSceneView(
 
     Box(modifier = modifier.fillMaxSize()) {
         ARScene(
-            modifier = modifier,
+            modifier = modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
             childNodes = childNodes,
@@ -151,59 +132,101 @@ fun ARSceneView(
                         true -> Config.DepthMode.AUTOMATIC
                         else -> Config.DepthMode.DISABLED
                     }
-                    setUpdateMode(Config.UpdateMode.LATEST_CAMERA_IMAGE)
+                    updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                     instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
                     lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                 }
             },
             cameraNode = cameraNode,
             onTrackingFailureChanged = { trackingFailureReason = it },
-            onSessionUpdated = { session, updatedFrame ->
+            onGestureListener = rememberOnGestureListener(
+                onLongPress = { _, node ->
+                    Log.i("Tap", "tap, ${node.toString()}")
+                }
+            ),
+            onSessionUpdated = { _, updatedFrame ->
                 frame = updatedFrame
 
                 updatedFrame.getUpdatedPlanes()
                     .firstOrNull { plane ->
-                        isPlaneAppropriateForFurniture(plane, selectedFurniture, modelLoader, polygonVerticesMap)
+                        selectedFurniture?.let { furniture ->
+                            val furnitureSize = furnitureDimensions[furniture.id]
+                            if (furnitureSize != null) {
+                                isPlaneLargeEnough(plane, furnitureSize)
+                            } else {
+                                false
+                            }
+                        } ?: false
                     }?.let { plane ->
                         if (selectedFurniture != null) {
                             if (childNodes.isEmpty()) {
                                 plane.createAnchorOrNull(plane.centerPose)?.let { anchor ->
-                                    val anchorNode = createAnchorNode(
+                                    animateModel = true
+                                    val pair = createAnchorNode(
                                         engine = engine,
                                         modelLoader = modelLoader,
                                         materialLoader = materialLoader,
                                         modelInstances = modelInstances,
                                         anchor = anchor,
                                         selectedFurniture = selectedFurniture,
-                                        getOrCreateModelInstance = ::getOrCreateModelInstance
+                                        getOrCreateModelInstance = ::getOrCreateModelInstance,
                                     )
-                                    childNodes += anchorNode
+                                    childNodes += pair.first
+                                    model = pair.second.apply {
+                                        isEditable = true
+                                        isPositionEditable = true
+                                        isRotationEditable = true
+                                        isTouchable = true
+
+                                        onSingleTapConfirmed = { _ ->
+                                            Log.i("Single tap", "true")
+                                            isSelected = !isSelected
+                                            if (isSelected) {
+                                                val boundingBoxNode = CubeNode(
+                                                    engine,
+                                                    size = Size(
+                                                        pair.second.halfExtent[0] * 2f,
+                                                        0.01f, // Very thin height for floor marker
+                                                        pair.second.halfExtent[2] * 2f
+                                                    ),
+                                                    materialInstance = materialLoader.createColorInstance(
+                                                        Color(0f, 0.7f, 1f, 0.3f)
+                                                    )
+                                                ).apply {
+                                                    position = Position(
+                                                        pair.second.center[0],
+                                                        1f, // Place at bottom of model
+                                                        pair.second.center[2]
+                                                    )
+                                                }
+                                                addChildNode(boundingBoxNode)
+                                            } else {
+                                                // Remove bounding box when deselected
+                                                clearChildNodes()
+                                            }
+                                            true
+                                        }
+                                    }
                                     placedFurnitureCount++
                                     onFurniturePlaced?.invoke(selectedFurniture)
                                     showCoachingOverlay = false
                                 }
+                            } else if (animateModel) {
+                                (childNodes.firstOrNull() as? AnchorNode)?.apply {
+                                    val (x, y) = view.viewport.run {
+                                        with(Constants.ARView) {
+                                            width / MODEL_PLACEMENT_WIDTH_PROPORTION to height / MODEL_PLACEMENT_HEIGHT_PROPORTION
+                                        }
+                                    }
+                                    val newPosition = updatedFrame.getPose(x, y)?.position ?: return@ARScene
+                                    worldPosition = Position(newPosition.x, newPosition.y, newPosition.z)
+                                }
                             }
                         }
                     } ?: run {
-                    Log.i("ARSceneView", "No suitable plane found for furniture")
                     onInvalidPlane?.invoke()
                 }
-            },
-            onGestureListener = rememberOnGestureListener(
-                onMove = { _, motionEvent, _ ->
-                    if (isModelAnchored) return@rememberOnGestureListener
-                    frame?.hitTest(motionEvent)?.firstOrNull()?.hitPose?.let { hitPose ->
-                        temporaryPosition = hitPose
-                    }
-                },
-                onSingleTapConfirmed = { motionEvent, _ ->
-                    if (isModelAnchored) return@rememberOnGestureListener
-                    frame?.hitTest(motionEvent)?.firstOrNull()?.hitPose?.let { hitPose ->
-                        temporaryPosition = hitPose
-                        isModelAnchored = true
-                    }
-                }
-            )
+            }
         )
 
         AnimatedVisibility(
@@ -231,6 +254,60 @@ fun ARSceneView(
     }
 }
 
+private fun isPlaneLargeEnough(plane: Plane, furnitureSize: Dimensions): Boolean {
+    if (plane.type != Plane.Type.HORIZONTAL_UPWARD_FACING) return false
+
+    val planePolygon = plane.polygon
+    if (planePolygon.limit() < 6) return false
+
+    // Calculate plane bounds first
+    var minX = Float.POSITIVE_INFINITY
+    var minZ = Float.POSITIVE_INFINITY
+    var maxX = Float.NEGATIVE_INFINITY
+    var maxZ = Float.NEGATIVE_INFINITY
+
+    for (i in 0 until planePolygon.limit() / 2) {
+        val x = planePolygon.get(i * 2)
+        val z = planePolygon.get(i * 2 + 1)
+        minX = minOf(minX, x)
+        minZ = minOf(minZ, z)
+        maxX = maxOf(maxX, x)
+        maxZ = maxOf(maxZ, z)
+    }
+
+    // Quick bounds check
+    val planeWidth = maxX - minX
+    val planeHeight = maxZ - minZ
+    Log.i("plane stat", "plane width: (${planeWidth}), height: (${planeHeight})")
+    Log.i("plane stat", "furniture size: (${furnitureSize.toString()})")
+    return true
+//    if (planeWidth < furnitureSize.width || planeHeight < furnitureSize.depth) {
+//        Log.i("Quickbound", "less than")
+//        return false
+//    }
+//    Log.i("Quickbound", "more than")
+
+//    // Get furniture corners in plane space
+//    val halfWidth = furnitureSize.width / 2f
+//    val halfHeight = furnitureSize.depth / 2f
+//    val corners = arrayOf(
+//        floatArrayOf(-halfWidth, 0f, -halfHeight),
+//        floatArrayOf(halfWidth, 0f, -halfHeight),
+//        floatArrayOf(halfWidth, 0f, halfHeight),
+//        floatArrayOf(-halfWidth, 0f, halfHeight)
+//    )
+//
+//    val planePose = plane.centerPose
+//
+//    return corners.all { corner ->
+//        val worldCorner = planePose.transformPoint(corner)
+//        val x = worldCorner[0]
+//        val z = worldCorner[2]
+//        x in minX..maxX && z in minZ..maxZ
+//    }
+//    return true
+}
+
 fun createAnchorNode(
     engine: Engine,
     modelLoader: ModelLoader,
@@ -239,8 +316,9 @@ fun createAnchorNode(
     selectedFurniture: FurnitureItem?,
     anchor: Anchor,
     getOrCreateModelInstance: (Int) -> ModelInstance
-): AnchorNode {
+): Pair<AnchorNode, ModelNode> {
     val anchorNode = AnchorNode(engine = engine, anchor = anchor)
+
     val modelInstance = if (modelInstances.isNotEmpty()) {
         modelInstances.removeLast()
     } else if (selectedFurniture != null) {
@@ -249,116 +327,41 @@ fun createAnchorNode(
         throw IllegalStateException("No model instances available and no furniture selected.")
     }
 
+    // Create the model node
     val modelNode = ModelNode(
         modelInstance = modelInstance,
         scaleToUnits = Constants.DESIRED_SCALE
     ).apply {
         enableGestures()
+        rotation = Rotation()
         isShadowCaster = true
         isShadowReceiver = true
     }
+
+    // Get the model's bounding box
+    val bounds = modelNode.boundingBox
+
+//    // Create a bounding box node (transparent cube)
+//    val boundingBoxNode = CubeNode(
+//        engine,
+//        size = Size(
+//            bounds.halfExtent[0] * 2f, // Width
+//            bounds.halfExtent[1] * 2f, // Height
+//            bounds.halfExtent[2] * 2f // Depth
+//        ),
+//        materialInstance = materialLoader.createColorInstance(Color.Red.copy(alpha = 0.5f))
+//    ).apply {
+//        isShadowCaster = false // Bounding box shouldn't cast shadows
+//        isShadowReceiver = false // Bounding box shouldn't receive shadows
+//        position = Position(bounds.center[0], bounds.center[1], bounds.center[2]) // Center the bounding box
+//    }
+
+//    modelNode.addChildNode(boundingBoxNode)
+    // Add the model node to the anchor node
     anchorNode.addChildNode(modelNode)
 
-    return anchorNode
+    return Pair(anchorNode, modelNode)
 }
 
-private fun isPlaneAppropriateForFurniture(
-    plane: Plane,
-    furniture: FurnitureItem?,
-    modelLoader: ModelLoader,
-    polygonVerticesMap: ConcurrentHashMap<Plane, List<Point>>
-): Boolean {
-    if (furniture == null || plane.type != Plane.Type.HORIZONTAL_UPWARD_FACING) return false
-
-    val modelInstance = modelLoader.createModelInstance(rawResId = furniture.modelResId)
-    val modelNode = ModelNode(
-        modelInstance = modelInstance,
-        scaleToUnits = Constants.DESIRED_SCALE
-    )
-
-    val bool = isModelPlaceableOnPlane(plane, modelNode, polygonVerticesMap)
-    modelNode.destroy()
-    return bool
-}
-
-private fun isModelPlaceableOnPlane(
-    plane: Plane,
-    model: ModelNode,
-    polygonVerticesMap: ConcurrentHashMap<Plane, List<Point>>
-): Boolean {
-    val bounds = model.boundingBox
-    val modelMatrix = model.worldTransform.toMatrix()
-
-    val min = Vector3(
-        bounds.center[0] - bounds.halfExtent[0],
-        bounds.center[1] - bounds.halfExtent[1],
-        bounds.center[2] - bounds.halfExtent[2]
-    )
-
-    val max = Vector3(
-        bounds.center[0] + bounds.halfExtent[0],
-        bounds.center[1] + bounds.halfExtent[1],
-        bounds.center[2] + bounds.halfExtent[2]
-    )
-
-    val corners = arrayOf(
-        Vector3(min.x, min.y, min.z),
-        Vector3(max.x, min.y, min.z),
-        Vector3(max.x, max.y, min.z),
-        Vector3(min.x, max.y, min.z),
-        Vector3(min.x, min.y, max.z),
-        Vector3(max.x, min.y, max.z),
-        Vector3(max.x, max.y, max.z),
-        Vector3(min.x, max.y, max.z)
-    )
-
-    val polygonVertices = polygonVerticesMap.getOrPut(plane) {
-        val polygonBuffer = plane.polygon
-        List(polygonBuffer.limit() / 2) { i ->
-            Point(polygonBuffer.get(i * 2), 0f, polygonBuffer.get(i * 2 + 1))
-        }
-    }
-
-    for (corner in corners) {
-        val worldCorner = modelMatrix.transformPoint(corner)
-        val points = floatArrayOf(worldCorner.x, worldCorner.y, worldCorner.z)
-        val localCorner = plane.centerPose.inverse().transformPoint(points)
-
-        val point2D = Point(localCorner[0], 0f, localCorner[2])
-
-        Log.i("AAAAAAAA", points.joinToString(","))
-
-        //This make performance issues
-//        if (!windingNumberAlgorithm(polygonVertices, point2D)) {
-//            Log.i("Placeable", "false")
-//            return false
-//        }
-    }
-    return true
-}
-
-private fun windingNumberAlgorithm(vertices: List<Point>, point: Point): Boolean {
-    var windingNumber = 0
-    for (i in vertices.indices) {
-        val current = vertices[i]
-        val next = vertices[(i + 1) % vertices.size]
-
-        if (current.z <= point.z) {
-            if (next.z > point.z && isLeftOfEdge(current, next, point) > 0) {
-                windingNumber++
-            }
-        } else {
-            if (next.z <= point.z && isLeftOfEdge(current, next, point) < 0) {
-                windingNumber--
-            }
-        }
-    }
-
-    return windingNumber != 0
-}
-
-private fun isLeftOfEdge(a: Point, b: Point, point: Point): Int {
-    return ((b.x - a.x) * (point.z - a.z) - (point.x - a.x) * (b.z - a.z)).sign.toInt()
-}
-
-data class Point(val x: Float, val y: Float, val z: Float) //Helper data class
+private fun Frame.getPose(x: Float, y: Float): Pose? =
+    hitTest(x, y).firstOrNull()?.hitPose

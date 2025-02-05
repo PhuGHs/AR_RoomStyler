@@ -1,5 +1,7 @@
 package com.example.homedecorator.util
 
+import androidx.compose.ui.unit.dp
+
 object Constants {
     const val DEFAULT_GESTURE_OVERLAY_ITERATIONS = 1
     const val PLAY_COUNT_ZERO = 0
@@ -11,4 +13,9 @@ object Constants {
     const val MODEL_NO_SCALE = 0F
     const val MODEL_NO_HEIGHT = 0F // Meter
     const val MODEL_RENDER_LOWEST_PRIORITY = 7
+
+    object ARView {
+        const val MODEL_PLACEMENT_WIDTH_PROPORTION = 1F
+        const val MODEL_PLACEMENT_HEIGHT_PROPORTION = 1F
+    }
 }

@@ -13,18 +13,17 @@ class ModelDimensionsCalculator(
         val modelInstance = modelLoader.createModelInstance(rawResId = modelResId)
         val modelNode = ModelNode(
             modelInstance = modelInstance,
-            scaleToUnits = desiredScale // Use a scale of 1.0f to get raw dimensions
+            scaleToUnits = 1.0f // Use a scale of 1.0f to get raw dimensions
         )
 
-        // Get the raw extents of the model
-        val rawExtents = modelNode.extents
+        val modelUnitsToMeters = 0.01f
 
-        // Assuming the model's extents are in meters, use them directly
-        // If the model's extents are not in meters, apply a conversion factor here
+        val bounds = modelNode.boundingBox // Get the bounding box
+
         val dimensions = Dimensions(
-            width = rawExtents.x * desiredScale,
-            height = rawExtents.y * desiredScale,
-            depth = rawExtents.z * desiredScale
+            width = bounds.halfExtent[0] * 2f * modelUnitsToMeters,  // Width is 2x halfExtent
+            height = bounds.halfExtent[1] * 2f * modelUnitsToMeters, // Height is 2x halfExtent
+            depth = bounds.halfExtent[2] * 2f * modelUnitsToMeters // Depth is 2x halfExtent
         )
 
         // Clean up the model node
