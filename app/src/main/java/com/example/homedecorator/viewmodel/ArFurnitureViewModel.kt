@@ -77,7 +77,7 @@ class ArFurnitureViewModel(
         viewModelScope.launch {
             if (!placedFurnitureList.value.contains(item)) {
                _placedFurnitureList.emit(_placedFurnitureList.value + item)
-               _selectedFurniture.emit(null)
+               _selectedFurniture.emit(item)
             }
         }
     }

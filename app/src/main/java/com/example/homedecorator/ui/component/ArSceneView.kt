@@ -39,6 +39,7 @@ import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.ar.getDescription
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.rememberARCameraNode
+import io.github.sceneview.geometries.Cylinder
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
@@ -46,6 +47,7 @@ import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.CubeNode
+import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.rememberCollisionSystem
@@ -55,6 +57,8 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberNodes
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberView
+import kotlin.math.floor
+import kotlin.math.max
 
 @Composable
 internal fun ARSceneView(
@@ -88,11 +92,10 @@ internal fun ARSceneView(
         mutableMapOf<Int, Dimensions>()
     }
     var furnitureDimensionsLoaded by remember { mutableStateOf(false) }
-    var selectedNode: Node? by remember { mutableStateOf(null) }
-    var isMoving by remember { mutableStateOf(false) }
-    var isSelected by remember { mutableStateOf(false) }
+    var isDragging by remember { mutableStateOf(false) }
+    var floorIndicator by remember { mutableStateOf<CylinderNode?>(null) }
 
-    fun getOrCreateModelInstance(modelResId: Int): ModelInstance {
+        fun getOrCreateModelInstance(modelResId: Int): ModelInstance {
         return modelInstanceCache.getOrPut(modelResId) {
             modelLoader.createModelInstance(rawResId = modelResId)
         }
@@ -140,8 +143,35 @@ internal fun ARSceneView(
             cameraNode = cameraNode,
             onTrackingFailureChanged = { trackingFailureReason = it },
             onGestureListener = rememberOnGestureListener(
-                onLongPress = { _, node ->
-                    Log.i("Tap", "tap, ${node.toString()}")
+                onSingleTapConfirmed = { _, _ ->
+                    animateModel = false
+                },
+                onMoveBegin = { _, _, node ->
+                    if (model !== null && node is ModelNode) {
+                        Log.i("Model", "exist")
+                        isDragging = true
+                        floorIndicator = createFloorIndicator(engine, materialLoader, node, 0.25f)
+                        floorIndicator?.apply {
+                            parent = node.parent
+                        }
+                    }
+                },
+                onMove = { _, e, node ->
+                    if (node == null) return@rememberOnGestureListener
+                    if (isDragging && floorIndicator !== null) {
+                        frame?.hitTest(e)?.firstOrNull()?.hitPose?.position?.let { position ->
+                            val anchor = (node.parent as? AnchorNode) ?: node
+                            anchor.worldPosition = position
+                            floorIndicator!!.worldPosition = position
+                        }
+                    }
+                },
+                onMoveEnd = { _, _, _ ->
+                    isDragging = false
+                    floorIndicator?.let {
+                        it.parent?.removeChildNode(it)
+                        floorIndicator = null
+                    }
                 }
             ),
             onSessionUpdated = { _, updatedFrame ->
@@ -172,55 +202,13 @@ internal fun ARSceneView(
                                         getOrCreateModelInstance = ::getOrCreateModelInstance,
                                     )
                                     childNodes += pair.first
-                                    model = pair.second.apply {
-                                        isEditable = true
-                                        isPositionEditable = true
-                                        isRotationEditable = true
-                                        isTouchable = true
-
-                                        onSingleTapConfirmed = { _ ->
-                                            Log.i("Single tap", "true")
-                                            isSelected = !isSelected
-                                            if (isSelected) {
-                                                val boundingBoxNode = CubeNode(
-                                                    engine,
-                                                    size = Size(
-                                                        pair.second.halfExtent[0] * 2f,
-                                                        0.01f, // Very thin height for floor marker
-                                                        pair.second.halfExtent[2] * 2f
-                                                    ),
-                                                    materialInstance = materialLoader.createColorInstance(
-                                                        Color(0f, 0.7f, 1f, 0.3f)
-                                                    )
-                                                ).apply {
-                                                    position = Position(
-                                                        pair.second.center[0],
-                                                        1f, // Place at bottom of model
-                                                        pair.second.center[2]
-                                                    )
-                                                }
-                                                addChildNode(boundingBoxNode)
-                                            } else {
-                                                // Remove bounding box when deselected
-                                                clearChildNodes()
-                                            }
-                                            true
-                                        }
-                                    }
+                                    model = pair.second
                                     placedFurnitureCount++
                                     onFurniturePlaced?.invoke(selectedFurniture)
                                     showCoachingOverlay = false
                                 }
-                            } else if (animateModel) {
-                                (childNodes.firstOrNull() as? AnchorNode)?.apply {
-                                    val (x, y) = view.viewport.run {
-                                        with(Constants.ARView) {
-                                            width / MODEL_PLACEMENT_WIDTH_PROPORTION to height / MODEL_PLACEMENT_HEIGHT_PROPORTION
-                                        }
-                                    }
-                                    val newPosition = updatedFrame.getPose(x, y)?.position ?: return@ARScene
-                                    worldPosition = Position(newPosition.x, newPosition.y, newPosition.z)
-                                }
+                            } else {
+                                childNodes.clear()
                             }
                         }
                     } ?: run {
@@ -365,3 +353,36 @@ fun createAnchorNode(
 
 private fun Frame.getPose(x: Float, y: Float): Pose? =
     hitTest(x, y).firstOrNull()?.hitPose
+
+fun createFloorIndicator(
+    engine: Engine,
+    materialLoader: MaterialLoader,
+    modelNode: ModelNode,
+    radius: Float
+): CylinderNode {
+    // Create a thin circular ring using a cylinder
+    val ringThickness = 0.02f // Thin ring
+    val ringHeight = 0.002f // Very small height to make it flat
+
+    val ring = CylinderNode(
+        engine = engine,
+        radius = radius, // Use the model's radius or custom size
+        height = ringHeight,
+        materialInstance = materialLoader.createColorInstance(
+            Color.White.copy(alpha = 1.0f)
+        )
+    ).apply {
+        // Position it slightly above the ground to prevent z-fighting
+        position = Position(
+            modelNode.worldPosition.x,
+            0.001f,
+            modelNode.worldPosition.z
+        )
+        // Rotate it to lay flat on the ground
+        // Make it not cast or receive shadows
+        isShadowCaster = false
+        isShadowReceiver = false
+    }
+
+    return ring
+}

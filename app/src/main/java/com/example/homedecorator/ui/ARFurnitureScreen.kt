@@ -42,7 +42,7 @@ fun ARFurnitureScreen(
                 viewModel.placeFurniture(furniture)
             },
             onInvalidPlane = {
-                Toast.makeText(context, "Try to move your camera around.", Toast.LENGTH_SHORT).show()
+                Log.i("Invalid plane", "Invalid plane")
             }
         )
 
