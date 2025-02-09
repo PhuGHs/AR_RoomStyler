@@ -23,7 +23,6 @@ fun HDSnackbar() {
             Text("Please select furniture before placing it.")
         }
 
-        // Automatically hide the Snackbar after 5 seconds
         LaunchedEffect(Unit) {
             kotlinx.coroutines.delay(5000) // 5 seconds
             showSnackbar = false

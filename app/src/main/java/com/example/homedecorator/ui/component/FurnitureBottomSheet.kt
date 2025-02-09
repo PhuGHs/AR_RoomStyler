@@ -38,14 +38,12 @@ fun CircularModelNavigation(
             .padding(bottom = 32.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Center circle with thumbnail and name
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(bottom = 8.dp)
         ) {
             val currentModel = viewModel.selectedFurniture.collectAsState().value
 
-            // Thumbnail circle
             Box(
                 modifier = Modifier
                     .size(100.dp)
@@ -67,7 +65,6 @@ fun CircularModelNavigation(
                 }
             }
 
-            // Product name
             Card(
                 modifier = Modifier.padding(top = 8.dp),
                 colors = CardDefaults.cardColors(
@@ -83,7 +80,6 @@ fun CircularModelNavigation(
             }
         }
 
-        // Left navigation button
         IconButton(
             onClick = { viewModel.navigateToPreviousModel() },
             modifier = Modifier
@@ -102,7 +98,6 @@ fun CircularModelNavigation(
             )
         }
 
-        // Right navigation button
         IconButton(
             onClick = { viewModel.navigateToNextModel() },
             modifier = Modifier

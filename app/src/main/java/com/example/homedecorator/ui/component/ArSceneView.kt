@@ -100,6 +100,9 @@ internal fun ARSceneView(
             modelLoader.createModelInstance(rawResId = modelResId)
         }
     }
+    var placedFurniture by remember {
+        mutableStateOf<FurnitureItem?>(null)
+    }
 
     LaunchedEffect(Unit) {
         val items = viewModel.updateDimension(modelLoader)
@@ -194,8 +197,6 @@ internal fun ARSceneView(
                                     animateModel = true
                                     val pair = createAnchorNode(
                                         engine = engine,
-                                        modelLoader = modelLoader,
-                                        materialLoader = materialLoader,
                                         modelInstances = modelInstances,
                                         anchor = anchor,
                                         selectedFurniture = selectedFurniture,
@@ -204,11 +205,19 @@ internal fun ARSceneView(
                                     childNodes += pair.first
                                     model = pair.second
                                     placedFurnitureCount++
+                                    placedFurniture = selectedFurniture
                                     onFurniturePlaced?.invoke(selectedFurniture)
                                     showCoachingOverlay = false
                                 }
-                            } else {
-                                childNodes.clear()
+                            }
+                            placedFurniture?.let {
+                                if (it.id != selectedFurniture.id) {
+                                    childNodes.clear()
+                                    model = null
+                                    placedFurnitureCount--
+                                    showCoachingOverlay = true
+                                    animateModel = false
+                                }
                             }
                         }
                     } ?: run {
@@ -298,8 +307,6 @@ private fun isPlaneLargeEnough(plane: Plane, furnitureSize: Dimensions): Boolean
 
 fun createAnchorNode(
     engine: Engine,
-    modelLoader: ModelLoader,
-    materialLoader: MaterialLoader,
     modelInstances: MutableList<ModelInstance>,
     selectedFurniture: FurnitureItem?,
     anchor: Anchor,
@@ -326,10 +333,8 @@ fun createAnchorNode(
         isShadowReceiver = true
     }
 
-    // Get the model's bounding box
     val bounds = modelNode.boundingBox
 
-//    // Create a bounding box node (transparent cube)
 //    val boundingBoxNode = CubeNode(
 //        engine,
 //        size = Size(
@@ -345,7 +350,6 @@ fun createAnchorNode(
 //    }
 
 //    modelNode.addChildNode(boundingBoxNode)
-    // Add the model node to the anchor node
     anchorNode.addChildNode(modelNode)
 
     return Pair(anchorNode, modelNode)
@@ -360,26 +364,21 @@ fun createFloorIndicator(
     modelNode: ModelNode,
     radius: Float
 ): CylinderNode {
-    // Create a thin circular ring using a cylinder
-    val ringThickness = 0.02f // Thin ring
-    val ringHeight = 0.002f // Very small height to make it flat
+    val ringHeight = 0.002f
 
     val ring = CylinderNode(
         engine = engine,
-        radius = radius, // Use the model's radius or custom size
+        radius = radius,
         height = ringHeight,
         materialInstance = materialLoader.createColorInstance(
             Color.White.copy(alpha = 1.0f)
         )
     ).apply {
-        // Position it slightly above the ground to prevent z-fighting
         position = Position(
             modelNode.worldPosition.x,
             0.001f,
             modelNode.worldPosition.z
         )
-        // Rotate it to lay flat on the ground
-        // Make it not cast or receive shadows
         isShadowCaster = false
         isShadowReceiver = false
     }
