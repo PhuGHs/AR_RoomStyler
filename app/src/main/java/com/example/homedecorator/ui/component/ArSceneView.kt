@@ -35,6 +35,7 @@ import com.google.ar.core.TrackingFailureReason
 import io.github.sceneview.ar.ARScene
 import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.ar.arcore.getUpdatedPlanes
+import io.github.sceneview.ar.arcore.isTrackingPlane
 import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.ar.getDescription
 import io.github.sceneview.ar.node.AnchorNode
@@ -68,7 +69,8 @@ internal fun ARSceneView(
     onError: (Exception) -> Unit = {},
     onFurniturePlaced: ((FurnitureItem) -> Unit)? = null,
     onInvalidPlane: (() -> Unit)? = null,
-    onModelTooLarge: (() -> Unit)? = null
+    onModelTooLarge: (() -> Unit)? = null,
+    onMoveModelOutOfRange: (() -> Unit)? = null
 ) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine = engine)
@@ -103,6 +105,7 @@ internal fun ARSceneView(
     var placedFurniture by remember {
         mutableStateOf<FurnitureItem?>(null)
     }
+    var currentPlane by remember { mutableStateOf<Plane?>(null) }
 
     LaunchedEffect(Unit) {
         val items = viewModel.updateDimension(modelLoader)
@@ -151,7 +154,6 @@ internal fun ARSceneView(
                 },
                 onMoveBegin = { _, _, node ->
                     if (model !== null && node is ModelNode) {
-                        Log.i("Model", "exist")
                         isDragging = true
                         floorIndicator = createFloorIndicator(engine, materialLoader, node, 0.25f)
                         floorIndicator?.apply {
@@ -161,11 +163,18 @@ internal fun ARSceneView(
                 },
                 onMove = { _, e, node ->
                     if (node == null) return@rememberOnGestureListener
-                    if (isDragging && floorIndicator !== null) {
-                        frame?.hitTest(e)?.firstOrNull()?.hitPose?.position?.let { position ->
-                            val anchor = (node.parent as? AnchorNode) ?: node
-                            anchor.worldPosition = position
-                            floorIndicator!!.worldPosition = position
+                    Log.i("Move", "Moving")
+                    if (isDragging && floorIndicator != null && currentPlane != null) {
+                        frame?.hitTest(e)?.firstOrNull()?.hitPose?.let { hitPose ->
+                            if (currentPlane!!.isPoseInPolygon(hitPose)) {
+                                Log.i("Pose", "In")
+                                val anchor = (node.parent as? AnchorNode) ?: node
+                                anchor.worldPosition = hitPose.position
+                                floorIndicator!!.worldPosition = hitPose.position
+                            } else {
+                                onMoveModelOutOfRange?.invoke()
+                                Log.d("Pose", "Pose is outside the plane polygon")
+                            }
                         }
                     }
                 },
@@ -191,6 +200,7 @@ internal fun ARSceneView(
                             }
                         } ?: false
                     }?.let { plane ->
+                        currentPlane = plane
                         if (selectedFurniture != null) {
                             if (childNodes.isEmpty()) {
                                 plane.createAnchorOrNull(plane.centerPose)?.let { anchor ->
@@ -222,6 +232,7 @@ internal fun ARSceneView(
                         }
                     } ?: run {
                     onInvalidPlane?.invoke()
+                    currentPlane = null
                 }
             }
         )
@@ -384,4 +395,35 @@ fun createFloorIndicator(
     }
 
     return ring
+}
+
+private fun isPoseInPlanePolygon(pose: Pose, plane: Plane): Boolean {
+    val planePolygon = plane.polygon
+    if (planePolygon.limit() < 6) return false // Need at least 3 vertices
+
+    val poseX = pose.tx()
+    val poseZ = pose.tz()
+
+    // Convert pose to plane's local coordinate system
+    val planePose = plane.centerPose
+    val localPose = planePose.inverse().compose(pose)
+    val localX = localPose.tx()
+    val localZ = localPose.tz()
+
+
+    // Ray casting algorithm to check if point is inside polygon
+    var inside = false
+    var j = planePolygon.limit() / 2 - 1
+    for (i in 0 until planePolygon.limit() / 2) {
+        val xi = planePolygon.get(i * 2)
+        val zi = planePolygon.get(i * 2 + 1)
+        val xj = planePolygon.get(j * 2)
+        val zj = planePolygon.get(j * 2 + 1)
+
+        val intersect = ((zi > localZ) != (zj > localZ)) &&
+                (localX < (xj - xi) * (localZ - zi) / (zj - zi) + xi)
+        if (intersect) inside = !inside
+        j = i
+    }
+    return inside
 }
