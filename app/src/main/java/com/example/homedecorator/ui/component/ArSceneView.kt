@@ -268,7 +268,6 @@ private fun isPlaneLargeEnough(plane: Plane, furnitureSize: Dimensions): Boolean
     val planePolygon = plane.polygon
     if (planePolygon.limit() < 6) return false
 
-    // Calculate plane bounds first
     var minX = Float.POSITIVE_INFINITY
     var minZ = Float.POSITIVE_INFINITY
     var maxX = Float.NEGATIVE_INFINITY
@@ -283,7 +282,6 @@ private fun isPlaneLargeEnough(plane: Plane, furnitureSize: Dimensions): Boolean
         maxZ = maxOf(maxZ, z)
     }
 
-    // Quick bounds check
     val planeWidth = maxX - minX
     val planeHeight = maxZ - minZ
     Log.i("plane stat", "plane width: (${planeWidth}), height: (${planeHeight})")
@@ -333,7 +331,6 @@ fun createAnchorNode(
         throw IllegalStateException("No model instances available and no furniture selected.")
     }
 
-    // Create the model node
     val modelNode = ModelNode(
         modelInstance = modelInstance,
         scaleToUnits = Constants.DESIRED_SCALE
@@ -395,35 +392,4 @@ fun createFloorIndicator(
     }
 
     return ring
-}
-
-private fun isPoseInPlanePolygon(pose: Pose, plane: Plane): Boolean {
-    val planePolygon = plane.polygon
-    if (planePolygon.limit() < 6) return false // Need at least 3 vertices
-
-    val poseX = pose.tx()
-    val poseZ = pose.tz()
-
-    // Convert pose to plane's local coordinate system
-    val planePose = plane.centerPose
-    val localPose = planePose.inverse().compose(pose)
-    val localX = localPose.tx()
-    val localZ = localPose.tz()
-
-
-    // Ray casting algorithm to check if point is inside polygon
-    var inside = false
-    var j = planePolygon.limit() / 2 - 1
-    for (i in 0 until planePolygon.limit() / 2) {
-        val xi = planePolygon.get(i * 2)
-        val zi = planePolygon.get(i * 2 + 1)
-        val xj = planePolygon.get(j * 2)
-        val zj = planePolygon.get(j * 2 + 1)
-
-        val intersect = ((zi > localZ) != (zj > localZ)) &&
-                (localX < (xj - xi) * (localZ - zi) / (zj - zi) + xi)
-        if (intersect) inside = !inside
-        j = i
-    }
-    return inside
 }
