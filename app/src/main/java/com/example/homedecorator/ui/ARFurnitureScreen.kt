@@ -56,6 +56,9 @@ fun ARFurnitureScreen(
             },
             onMoveModelOutOfRange = {
                 Toast.makeText(context, "Model is outside the detected plane", Toast.LENGTH_SHORT).show()
+            },
+            onModelTooLarge = {
+                Toast.makeText(context, "Model is too large for this detected area", Toast.LENGTH_SHORT).show()
             }
         )
         

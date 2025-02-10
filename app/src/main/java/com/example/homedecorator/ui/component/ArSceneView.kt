@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -35,22 +36,16 @@ import com.google.ar.core.TrackingFailureReason
 import io.github.sceneview.ar.ARScene
 import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.ar.arcore.getUpdatedPlanes
-import io.github.sceneview.ar.arcore.isTrackingPlane
 import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.ar.getDescription
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.rememberARCameraNode
-import io.github.sceneview.geometries.Cylinder
 import io.github.sceneview.loaders.MaterialLoader
-import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
-import io.github.sceneview.math.Size
 import io.github.sceneview.model.ModelInstance
-import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.node.ModelNode
-import io.github.sceneview.node.Node
 import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -58,8 +53,6 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberNodes
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberView
-import kotlin.math.floor
-import kotlin.math.max
 
 @Composable
 internal fun ARSceneView(
@@ -86,7 +79,7 @@ internal fun ARSceneView(
     val modelInstances = remember { mutableListOf<ModelInstance>() }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var frame by remember { mutableStateOf<Frame?>(null) }
-    var placedFurnitureCount by remember { mutableStateOf(0) }
+    var placedFurnitureCount by remember { mutableIntStateOf(0) }
     var model by remember { mutableStateOf<ModelNode?>(null) }
     var animateModel by remember { mutableStateOf(false) }
     var showCoachingOverlay by remember { mutableStateOf(true) }
@@ -163,17 +156,14 @@ internal fun ARSceneView(
                 },
                 onMove = { _, e, node ->
                     if (node == null) return@rememberOnGestureListener
-                    Log.i("Move", "Moving")
                     if (isDragging && floorIndicator != null && currentPlane != null) {
                         frame?.hitTest(e)?.firstOrNull()?.hitPose?.let { hitPose ->
                             if (currentPlane!!.isPoseInPolygon(hitPose)) {
-                                Log.i("Pose", "In")
                                 val anchor = (node.parent as? AnchorNode) ?: node
                                 anchor.worldPosition = hitPose.position
                                 floorIndicator!!.worldPosition = hitPose.position
                             } else {
                                 onMoveModelOutOfRange?.invoke()
-                                Log.d("Pose", "Pose is outside the plane polygon")
                             }
                         }
                     }
@@ -194,7 +184,11 @@ internal fun ARSceneView(
                         selectedFurniture?.let { furniture ->
                             val furnitureSize = furnitureDimensions[furniture.id]
                             if (furnitureSize != null) {
-                                isPlaneLargeEnough(plane, furnitureSize)
+                                var fit = isPlaneLargeEnough(plane, furnitureSize)
+                                if (!fit) {
+                                    onModelTooLarge?.invoke()
+                                }
+                                fit
                             } else {
                                 false
                             }
@@ -265,53 +259,24 @@ internal fun ARSceneView(
 private fun isPlaneLargeEnough(plane: Plane, furnitureSize: Dimensions): Boolean {
     if (plane.type != Plane.Type.HORIZONTAL_UPWARD_FACING) return false
 
-    val planePolygon = plane.polygon
-    if (planePolygon.limit() < 6) return false
+    val planeCenterPose = plane.centerPose
 
-    var minX = Float.POSITIVE_INFINITY
-    var minZ = Float.POSITIVE_INFINITY
-    var maxX = Float.NEGATIVE_INFINITY
-    var maxZ = Float.NEGATIVE_INFINITY
+    val halfWidth = furnitureSize.width / 2f
+    val halfDepth = furnitureSize.depth / 2f
 
-    for (i in 0 until planePolygon.limit() / 2) {
-        val x = planePolygon.get(i * 2)
-        val z = planePolygon.get(i * 2 + 1)
-        minX = minOf(minX, x)
-        minZ = minOf(minZ, z)
-        maxX = maxOf(maxX, x)
-        maxZ = maxOf(maxZ, z)
+    Log.i("stat", "halfWidth: ${halfWidth}, halfDepth: ${halfDepth}")
+
+    val corners = arrayOf(
+        Pose(floatArrayOf(-halfWidth, 0f, -halfDepth), floatArrayOf(0f, 0f, 0f, 1f)), // Bottom-left corner
+        Pose(floatArrayOf(halfWidth, 0f, -halfDepth), floatArrayOf(0f, 0f, 0f, 1f)),  // Bottom-right corner
+        Pose(floatArrayOf(halfWidth, 0f, halfDepth), floatArrayOf(0f, 0f, 0f, 1f)),   // Top-right corner
+        Pose(floatArrayOf(-halfWidth, 0f, halfDepth), floatArrayOf(0f, 0f, 0f, 1f))  // Top-left corner
+    )
+
+    return corners.all { corner ->
+        val worldCornerPose = planeCenterPose.compose(corner);
+        plane.isPoseInPolygon(worldCornerPose)
     }
-
-    val planeWidth = maxX - minX
-    val planeHeight = maxZ - minZ
-    Log.i("plane stat", "plane width: (${planeWidth}), height: (${planeHeight})")
-    Log.i("plane stat", "furniture size: (${furnitureSize.toString()})")
-    return true
-//    if (planeWidth < furnitureSize.width || planeHeight < furnitureSize.depth) {
-//        Log.i("Quickbound", "less than")
-//        return false
-//    }
-//    Log.i("Quickbound", "more than")
-
-//    // Get furniture corners in plane space
-//    val halfWidth = furnitureSize.width / 2f
-//    val halfHeight = furnitureSize.depth / 2f
-//    val corners = arrayOf(
-//        floatArrayOf(-halfWidth, 0f, -halfHeight),
-//        floatArrayOf(halfWidth, 0f, -halfHeight),
-//        floatArrayOf(halfWidth, 0f, halfHeight),
-//        floatArrayOf(-halfWidth, 0f, halfHeight)
-//    )
-//
-//    val planePose = plane.centerPose
-//
-//    return corners.all { corner ->
-//        val worldCorner = planePose.transformPoint(corner)
-//        val x = worldCorner[0]
-//        val z = worldCorner[2]
-//        x in minX..maxX && z in minZ..maxZ
-//    }
-//    return true
 }
 
 fun createAnchorNode(
