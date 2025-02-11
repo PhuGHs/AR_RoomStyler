@@ -43,7 +43,9 @@ import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Size
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberCollisionSystem
@@ -148,9 +150,12 @@ internal fun ARSceneView(
                 onMoveBegin = { _, _, node ->
                     if (model !== null && node is ModelNode) {
                         isDragging = true
-                        floorIndicator = createFloorIndicator(engine, materialLoader, node, 0.25f)
-                        floorIndicator?.apply {
-                            parent = node.parent
+                        val dimensions = selectedFurniture?.dimensions
+                        if (dimensions != null) {
+                            floorIndicator = createFloorIndicator(engine, materialLoader, node, dimensions.width / 2)
+                            floorIndicator?.apply {
+                                parent = node.parent
+                            }
                         }
                     }
                 },
@@ -164,6 +169,17 @@ internal fun ARSceneView(
                                 floorIndicator!!.worldPosition = hitPose.position
                             } else {
                                 onMoveModelOutOfRange?.invoke()
+                            }
+
+                            selectedFurniture?.dimensions?.let {
+                                val flag = isPlaneLargeEnough(
+                                    currentPlane!!,
+                                    it
+                                )
+                                if (flag) {
+                                    Log.i("Modelzz", "come")
+                                    onModelTooLarge?.invoke()
+                                }
                             }
                         }
                     }
@@ -184,7 +200,7 @@ internal fun ARSceneView(
                         selectedFurniture?.let { furniture ->
                             val furnitureSize = furnitureDimensions[furniture.id]
                             if (furnitureSize != null) {
-                                var fit = isPlaneLargeEnough(plane, furnitureSize)
+                                val fit = isPlaneLargeEnough(plane, furnitureSize)
                                 if (!fit) {
                                     onModelTooLarge?.invoke()
                                 }
@@ -265,6 +281,7 @@ private fun isPlaneLargeEnough(plane: Plane, furnitureSize: Dimensions): Boolean
     val halfDepth = furnitureSize.depth / 2f
 
     Log.i("stat", "halfWidth: ${halfWidth}, halfDepth: ${halfDepth}")
+    Log.i("stat", "width: ${furnitureSize.width}, depth: ${furnitureSize.depth}")
 
     val corners = arrayOf(
         Pose(floatArrayOf(-halfWidth, 0f, -halfDepth), floatArrayOf(0f, 0f, 0f, 1f)), // Bottom-left corner
@@ -277,6 +294,20 @@ private fun isPlaneLargeEnough(plane: Plane, furnitureSize: Dimensions): Boolean
         val worldCornerPose = planeCenterPose.compose(corner);
         plane.isPoseInPolygon(worldCornerPose)
     }
+}
+
+private fun isPlaneLargeEnoughSizeCheck(plane: Plane, furnitureSize: Dimensions): Boolean {
+    if (plane.type != Plane.Type.HORIZONTAL_UPWARD_FACING) return false
+
+    val planeWidth = plane.extentX
+    val planeDepth = plane.extentZ
+
+    val furnitureWidth = furnitureSize.width
+    val furnitureDepth = furnitureSize.depth
+
+    Log.i("Stat manual", "plane: (${planeWidth}, ${planeDepth}) // furniture: (${furnitureWidth}, ${furnitureDepth})")
+
+    return !(planeWidth < furnitureWidth || planeDepth < furnitureDepth)
 }
 
 fun createAnchorNode(
@@ -297,8 +328,7 @@ fun createAnchorNode(
     }
 
     val modelNode = ModelNode(
-        modelInstance = modelInstance,
-        scaleToUnits = Constants.DESIRED_SCALE
+        modelInstance = modelInstance
     ).apply {
         enableGestures()
         rotation = Rotation()

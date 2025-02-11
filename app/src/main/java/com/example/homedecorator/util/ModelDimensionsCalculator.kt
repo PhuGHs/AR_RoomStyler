@@ -13,17 +13,14 @@ class ModelDimensionsCalculator(
     fun calculateDimensions(modelResId: Int): Dimensions {
         val modelInstance = modelLoader.createModelInstance(rawResId = modelResId)
         val modelNode = ModelNode(modelInstance = modelInstance)
-        modelNode.scaleToUnitCube(1.0f)
 
         val bounds = modelNode.boundingBox
         val halfExtent = bounds.halfExtent.let { v -> Float3(v[0], v[1], v[2]) }
 
-        val scale = modelNode.scale.x
-
         val dimensions = Dimensions(
-            width = abs(halfExtent.x * 2f * scale),
-            height = abs(halfExtent.y * 2f * scale),
-            depth = abs(halfExtent.z * 2f * scale)
+            width = abs(halfExtent.x * 2f),
+            height = abs(halfExtent.y * 2f),
+            depth = abs(halfExtent.z * 2f)
         )
 
         modelNode.destroy()
