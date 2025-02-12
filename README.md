@@ -14,16 +14,15 @@ AR Room Styler is an augmented reality (AR) application that allows users to int
 
 ## Tech Stack
 - **Jetpack Compose** - Modern UI toolkit for building native Android interfaces.
-- **ARCore** - Google's platform for building augmented reality experiences.
+- **ARCore** - Google's platform for building augmented reality experiences (https://github.com/SceneView/sceneview-android).
 - **Kotlin** - Primary language for Android development.
-
 ## Installation
 1. Clone the repository:
    ```bash
    git clone https://github.com/PhuGHs/AR_RoomStyler.git
    ```
 2. Open the project in Android Studio.
-3. Build and run the application on an ARCore-supported device.
+3. Build and run the application on an ARCore-supported device. Please make sure your devices are listed in this link https://developers.google.com/ar/devices
 
 ## Usage
 - Open the app and grant necessary permissions.
@@ -37,6 +36,9 @@ AR Room Styler is an augmented reality (AR) application that allows users to int
 ![Product Image 2](https://res.cloudinary.com/daszajz9a/image/upload/v1739376307/project/2_xt8aer.png)
 ![Product Image 3](https://res.cloudinary.com/daszajz9a/image/upload/v1739376305/project/3_irtcmr.png)
 ![Product Image 4](https://res.cloudinary.com/daszajz9a/image/upload/v1739376306/project/4_ghcvdp.png)
+
+## Model sources
+All of the models are downloaded from this website (https://poly.pizza/) and edited in blender (edit model scale)
 
 ## Repository
 [GitHub Repository](https://github.com/PhuGHs/AR_RoomStyler.git)
