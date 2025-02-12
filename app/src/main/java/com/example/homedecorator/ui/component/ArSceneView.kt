@@ -137,7 +137,6 @@ internal fun ARSceneView(
                         else -> Config.DepthMode.DISABLED
                     }
                     updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
-                    instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
                     lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                 }
             },
@@ -150,8 +149,9 @@ internal fun ARSceneView(
                 onMoveBegin = { _, _, node ->
                     if (model !== null && node is ModelNode) {
                         isDragging = true
-                        val dimensions = selectedFurniture?.dimensions
+                        val dimensions = placedFurniture?.dimensions
                         if (dimensions != null) {
+                            Log.i("special", "dimensions not null")
                             floorIndicator = createFloorIndicator(engine, materialLoader, node, dimensions.width / 2)
                             floorIndicator?.apply {
                                 parent = node.parent
@@ -168,16 +168,17 @@ internal fun ARSceneView(
                                 anchor.worldPosition = hitPose.position
                                 floorIndicator!!.worldPosition = hitPose.position
                             } else {
+                                Log.i("special", "move model outside")
                                 onMoveModelOutOfRange?.invoke()
                             }
 
-                            selectedFurniture?.dimensions?.let {
+                            placedFurniture?.dimensions?.let {
                                 val flag = isPlaneLargeEnough(
                                     currentPlane!!,
                                     it
                                 )
                                 if (flag) {
-                                    Log.i("Modelzz", "come")
+                                    Log.i("special", "model too large")
                                     onModelTooLarge?.invoke()
                                 }
                             }
