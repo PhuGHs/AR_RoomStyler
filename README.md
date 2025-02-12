@@ -1,5 +1,10 @@
 # AR Room Styler
 
+## Contributors
+Seminar các vấn đề hiện đại của CNPM – SE400.P11
+1. Le Van Phu - 21522466
+2. Le Hoai Hai - 21522032
+
 ## Overview
 AR Room Styler is an augmented reality (AR) application that allows users to interact with 3D models in real-time. Users can place, move, and rotate virtual furniture in their real environment using ARCore technology.
 
