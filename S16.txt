@@ -1,0 +1,4 @@
+hi c, em có một vài câu hỏi về 2 USs này OCEAN-2512(https://rb-tracker.bosch.com/tracker03/browse/OCEAN-2512) và OCEAN-2528(https://rb-tracker.bosch.com/tracker03/browse/OCEAN-2528).
+
+1. ở OCEAN-2528, "The country field is automatically selected according to the country the ECO is working in." ở trong AC có đề cập nhưng trong UI mockup lại không có bất kỳ field nào liên quan đến Country. Tương tự ở OCEAN-2512, User can select the country for circumvention?
+2. hai USs này chung UI mockup đúng kh ạ? Hay là mỗi ticket sẽ có mỗi design riêng
