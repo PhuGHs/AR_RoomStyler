@@ -18,9 +18,9 @@ class ModelDimensionsCalculator(
         val halfExtent = bounds.halfExtent.let { v -> Float3(v[0], v[1], v[2]) }
 
         val dimensions = Dimensions(
-            width = abs(halfExtent.x * 2f),
-            height = abs(halfExtent.y * 2f),
-            depth = abs(halfExtent.z * 2f)
+            width = abs(halfExtent.x * 2.0f),
+            height = abs(halfExtent.y * 2.0f),
+            depth = abs(halfExtent.z * 2.0f)
         )
 
         modelNode.destroy()

@@ -37,9 +37,11 @@ import io.github.sceneview.ar.ARScene
 import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.ar.arcore.getUpdatedPlanes
 import io.github.sceneview.ar.arcore.position
+import io.github.sceneview.ar.arcore.quaternion
 import io.github.sceneview.ar.getDescription
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.rememberARCameraNode
+import io.github.sceneview.collision.Box
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -48,6 +50,7 @@ import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.node.ModelNode
+import io.github.sceneview.node.Node
 import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -64,8 +67,8 @@ internal fun ARSceneView(
     onError: (Exception) -> Unit = {},
     onFurniturePlaced: ((FurnitureItem) -> Unit)? = null,
     onInvalidPlane: (() -> Unit)? = null,
-    onModelTooLarge: (() -> Unit)? = null,
-    onMoveModelOutOfRange: (() -> Unit)? = null
+    onModelTooLarge: ((value: Boolean) -> Unit)? = null,
+    onMoveModelOutOfRange: ((value: Boolean) -> Unit)? = null
 ) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine = engine)
@@ -163,23 +166,31 @@ internal fun ARSceneView(
                     if (node == null) return@rememberOnGestureListener
                     if (isDragging && floorIndicator != null && currentPlane != null) {
                         frame?.hitTest(e)?.firstOrNull()?.hitPose?.let { hitPose ->
+                            val anchor = (node.parent as? AnchorNode) ?: node
+                            anchor.worldPosition = hitPose.position
+                            floorIndicator!!.worldPosition = hitPose.position
+                            model?.let {
+                                it.worldPosition = hitPose.position
+                                it.worldQuaternion = hitPose.quaternion
+                            }
                             if (currentPlane!!.isPoseInPolygon(hitPose)) {
-                                val anchor = (node.parent as? AnchorNode) ?: node
-                                anchor.worldPosition = hitPose.position
-                                floorIndicator!!.worldPosition = hitPose.position
+                                onMoveModelOutOfRange?.invoke(false)
                             } else {
-                                Log.i("special", "move model outside")
-                                onMoveModelOutOfRange?.invoke()
+                                Log.i("special", "Model out of range")
+                                onMoveModelOutOfRange?.invoke(true)
                             }
 
-                            placedFurniture?.dimensions?.let {
+                            model?.let {
                                 val flag = isPlaneLargeEnough(
                                     currentPlane!!,
                                     it
                                 )
                                 if (flag) {
+                                    Log.i("special", "model fit")
+                                    onModelTooLarge?.invoke(false)
+                                } else {
                                     Log.i("special", "model too large")
-                                    onModelTooLarge?.invoke()
+                                    onModelTooLarge?.invoke(true)
                                 }
                             }
                         }
@@ -202,9 +213,6 @@ internal fun ARSceneView(
                             val furnitureSize = furnitureDimensions[furniture.id]
                             if (furnitureSize != null) {
                                 val fit = isPlaneLargeEnough(plane, furnitureSize)
-                                if (!fit) {
-                                    onModelTooLarge?.invoke()
-                                }
                                 fit
                             } else {
                                 false
@@ -291,9 +299,59 @@ private fun isPlaneLargeEnough(plane: Plane, furnitureSize: Dimensions): Boolean
         Pose(floatArrayOf(-halfWidth, 0f, halfDepth), floatArrayOf(0f, 0f, 0f, 1f))  // Top-left corner
     )
 
+
     return corners.all { corner ->
         val worldCornerPose = planeCenterPose.compose(corner);
         plane.isPoseInPolygon(worldCornerPose)
+    }
+}
+
+private fun isPlaneLargeEnough(plane: Plane, modelNode: Node): Boolean {
+    if (plane.type != Plane.Type.HORIZONTAL_UPWARD_FACING) return false
+    var index = 1
+
+    val planeCenterPose = plane.centerPose
+    val box = modelNode.collisionShape as Box
+    val extents = box.size.scaled(0.5f)
+
+    // Create corners relative to the model's world position
+    val corners = arrayOf(
+        Pose(floatArrayOf(-extents.x, 0f, -extents.z), floatArrayOf(0f, 0f, 0f, 1f)), // Back-left corner
+        Pose(floatArrayOf(extents.x, 0f, -extents.z), floatArrayOf(0f, 0f, 0f, 1f)),  // Back-right corner
+        Pose(floatArrayOf(extents.x, 0f, extents.z), floatArrayOf(0f, 0f, 0f, 1f)),   // Front-right corner
+        Pose(floatArrayOf(-extents.x, 0f, extents.z), floatArrayOf(0f, 0f, 0f, 1f))   // Front-left corner
+    )
+
+    Log.i("stat2", "extents x: ${extents.x}, z: ${extents.z}")
+    Log.i("stat2", "full width: ${extents.x * 2}, full depth: ${extents.z * 2}")
+    Log.i("model_position", "world position: ${modelNode.worldPosition}")
+
+    // Create model's world pose from its position and rotation
+    val modelWorldPose = Pose(
+        floatArrayOf(
+            modelNode.worldPosition.x,
+            modelNode.worldPosition.y,
+            modelNode.worldPosition.z
+        ),
+        modelNode.worldQuaternion.toFloatArray()
+    )
+
+    return corners.all { corner ->
+        // First transform corner by model's world pose, then check if it's in the plane
+        val worldCornerPose = modelWorldPose.compose(corner)
+
+        // Convert world corner pose to plane's local space
+//        val cornerInPlanePose = planeCenterPose.inverse().compose(worldCornerPose)
+
+        Log.i("coordinate", "${index}: world: ${worldCornerPose.toString()}")
+        val v = plane.isPoseInPolygon(worldCornerPose)
+        if (v) {
+            Log.i("coordinate", "${index}: fit")
+        } else {
+            Log.i("coordinate", "${index}: does not fit")
+        }
+        index += 1
+        v
     }
 }
 
@@ -306,7 +364,7 @@ private fun isPlaneLargeEnoughSizeCheck(plane: Plane, furnitureSize: Dimensions)
     val furnitureWidth = furnitureSize.width
     val furnitureDepth = furnitureSize.depth
 
-    Log.i("Stat manual", "plane: (${planeWidth}, ${planeDepth}) // furniture: (${furnitureWidth}, ${furnitureDepth})")
+    Log.i("checksize", "plane: (${planeWidth}, ${planeDepth}) // furniture: (${furnitureWidth}, ${furnitureDepth})")
 
     return !(planeWidth < furnitureWidth || planeDepth < furnitureDepth)
 }
